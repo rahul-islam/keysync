@@ -49,12 +49,41 @@ def derive_crop_data(landmarks: np.ndarray, video_thwc_shape):
     return cd
 
 
+_FEATHER_CACHE = {}
+
+
+def _feather_alpha(h: int, w: int, feather_px: int) -> torch.Tensor:
+    """Per-pixel blend weight (H, W, 1) in [0, 1] for the pasted patch:
+    1.0 in the interior, ramping linearly to 0.0 over the outer `feather_px`
+    pixels on every side so the patch fades into the original frame instead
+    of leaving a hard rectangular seam. Corners feather too (min of the two
+    edge distances). Masks are cached per (h, w, feather_px)."""
+    key = (h, w, feather_px)
+    cached = _FEATHER_CACHE.get(key)
+    if cached is not None:
+        return cached
+    if feather_px <= 0:
+        alpha = torch.ones((h, w, 1), dtype=torch.float32)
+    else:
+        ys = torch.minimum(torch.arange(h), torch.arange(h).flip(0)).float()
+        xs = torch.minimum(torch.arange(w), torch.arange(w).flip(0)).float()
+        dist = torch.minimum(ys.unsqueeze(1), xs.unsqueeze(0))  # (H, W)
+        alpha = (dist / float(feather_px)).clamp(0.0, 1.0).unsqueeze(-1)
+    _FEATHER_CACHE[key] = alpha
+    return alpha
+
+
 def composite(original_thwc: torch.Tensor,
               inference_thwc: torch.Tensor,
-              crop_data) -> torch.Tensor:
+              crop_data,
+              feather: float = 0.08) -> torch.Tensor:
     """Paste each inference frame back into the corresponding original
     frame at its crop bbox. Only the first min(T_inf, T_orig) frames are
-    composited; tail original frames are preserved as-is."""
+    composited; tail original frames are preserved as-is.
+
+    `feather` is the fraction of the (shorter) box side over which the patch
+    is alpha-blended into the original frame at the border, softening the
+    seam. 0 disables feathering (hard paste, the previous behaviour)."""
     out = original_thwc.clone()
     t = min(inference_thwc.shape[0], original_thwc.shape[0], len(crop_data))
     for i in range(t):
@@ -68,8 +97,15 @@ def composite(original_thwc: torch.Tensor,
         patch = inference_thwc[i].permute(2, 0, 1).unsqueeze(0).float()
         patch = F.interpolate(patch, size=(h_box, w_box),
                               mode="bilinear", align_corners=False)
-        patch = patch.clamp(0, 255).to(torch.uint8).squeeze(0).permute(1, 2, 0)
-        out[i, y0:y1, x0:x1] = patch
+        patch = patch.clamp(0, 255).squeeze(0).permute(1, 2, 0)  # (H, W, C) float
+        if feather and feather > 0:
+            feather_px = max(1, int(round(feather * min(h_box, w_box))))
+            alpha = _feather_alpha(h_box, w_box, feather_px)  # (H, W, 1) float
+            region = out[i, y0:y1, x0:x1].float()
+            blended = alpha * patch + (1.0 - alpha) * region
+            out[i, y0:y1, x0:x1] = blended.clamp(0, 255).to(torch.uint8)
+        else:
+            out[i, y0:y1, x0:x1] = patch.to(torch.uint8)
     return out
 
 
@@ -83,6 +119,10 @@ def main():
                     help="KeySync 512x512 output mp4 (with audio)")
     ap.add_argument("--output", required=True,
                     help="Output mp4 at original resolution")
+    ap.add_argument("--feather", type=float, default=0.08,
+                    help="Fraction of the (shorter) crop-box side over which "
+                         "to alpha-blend the patch into the original frame at "
+                         "the border, softening the seam. 0 = hard paste.")
     args = ap.parse_args()
 
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
@@ -103,7 +143,7 @@ def main():
     inf, audio, info = read_video(args.inference, output_format="THWC")
     audio_fps = int(info.get("audio_fps", 16000)) if audio is not None and audio.numel() else 16000
 
-    recomposed = composite(orig, inf, crop_data)  # (T, H, W, C) uint8
+    recomposed = composite(orig, inf, crop_data, feather=args.feather)  # (T, H, W, C) uint8
 
     # save_audio_video wants (T, C, H, W) and accepts ndarray.
     recomposed_tchw = recomposed.permute(0, 3, 1, 2).numpy()
