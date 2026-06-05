@@ -26,6 +26,7 @@ notebooks/side_by_side.ipynb
 
 # /sruns_rodrigo
 *.mp4
+*.wav
 *.pt
 *.png
 *.pth
