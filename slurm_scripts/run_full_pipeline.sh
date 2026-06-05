@@ -39,6 +39,22 @@ COMPUTE_UNTIL="${6:-45}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INFERENCE_DIR="$WORK_DIR/inference"
 
+# Activate the conda env here so every child script (including the
+# upstream infer_raw.sh, which does not activate it itself) inherits
+# python on PATH via the exported CONDA_PREFIX / PATH.
+ENV_NAME="${ENV_NAME:-KeySync}"
+module load mamba/24.3.0
+# shellcheck disable=SC1091
+source /hpc/software/mamba/24.3.0/etc/profile.d/conda.sh
+conda activate "$ENV_NAME"
+
+# The login shell's ~/.bashrc exports HF_HUB_ENABLE_HF_TRANSFER=1, but the
+# hf_transfer package is not installed in the env, which hard-fails every
+# HuggingFace download (e.g. facebook/hubert-base-ls960 during inference).
+# Force the standard downloader. This export is inherited by all child
+# scripts launched below (preprocess_crop.sh, infer_raw.sh, recompose.sh).
+export HF_HUB_ENABLE_HF_TRANSFER=0
+
 # 1 + 2 + 3: ffmpeg, landmarks, crop
 bash "$REPO_ROOT/slurm_scripts/preprocess_crop.sh" \
     "$RAW_VIDEO_DIR" "$RAW_AUDIO_DIR" "$WORK_DIR"

@@ -1611,7 +1611,10 @@ def main(
         model_size="Base+",
         feed_as_frames=False,
         merge_type="None",
-        model_path="/vol/paramonos2/projects/antoni/code/Personal/code_prep/keysync/pretrained_models/checkpoints/WavLM-Base+.pt",
+        model_path=os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "pretrained_models", "checkpoints", "WavLM-Base+.pt",
+        ),
     ).cuda()
     vae_model = VaeWrapper("video")
     landmarks_model = LandmarksExtractor()

@@ -73,6 +73,15 @@ if [ -z "$output_folder" ]; then
     exit 1
 fi
 
+# Upstream prepends "outputs/" assuming a relative folder name. Our pipeline
+# passes an absolute path (outputs/demo_run/inference), which would produce a
+# broken "outputs//gpfs/..." path. Only add the prefix for relative paths.
+if [[ "$output_folder" = /* ]]; then
+    output_arg="$output_folder"
+else
+    output_arg="outputs/$output_folder"
+fi
+
 # Run the Python script with the appropriate arguments
 python scripts/sampling/dubbing_pipeline_raw.py \
     --filelist=${file_list} \
@@ -89,7 +98,7 @@ python scripts/sampling/dubbing_pipeline_raw.py \
     --landmark_folder=landmarks \
     --audio_folder=audios \
     --audio_emb_folder=audios \
-    --output_folder=outputs/${output_folder} \
+    --output_folder=${output_arg} \
     --keyframes_ckpt=${keyframes_ckpt} \
     --interpolation_ckpt=${interpolation_ckpt} \
     --add_zero_flag=True \

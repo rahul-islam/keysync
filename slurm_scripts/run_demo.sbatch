@@ -21,7 +21,10 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Under sbatch the script is copied to the slurm spool dir, so BASH_SOURCE
+# does NOT point into the repo. SLURM_SUBMIT_DIR is the directory the job was
+# submitted from (the repo root); fall back to BASH_SOURCE for direct `bash` runs.
+REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$REPO_ROOT"
 
 CKPT_DIR="${CKPT_DIR:-$REPO_ROOT/pretrained_models/checkpoints}"

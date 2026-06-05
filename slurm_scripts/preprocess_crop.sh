@@ -47,10 +47,20 @@ CROPPED_LANDMARKS_DIR="$WORK_DIR/landmarks_cropped"
 mkdir -p "$VIDEO_25FPS_DIR" "$AUDIO_16K_DIR" "$LANDMARKS_DIR" \
          "$CROPPED_VIDEO_DIR" "$CROPPED_LANDMARKS_DIR"
 
-module load mamba/24.3.0
-# shellcheck disable=SC1091
-source /hpc/software/mamba/24.3.0/etc/profile.d/conda.sh
-conda activate "$ENV_NAME"
+# Activate the conda env only if not already active. A redundant
+# `module load mamba` inside a sub-shell prepends mamba/bin ahead of
+# the env's bin and `conda activate` is then a no-op, so `python`
+# silently resolves to base mamba.
+if [[ "${CONDA_DEFAULT_ENV:-}" != "$ENV_NAME" ]]; then
+    module load mamba/24.3.0
+    # shellcheck disable=SC1091
+    source /hpc/software/mamba/24.3.0/etc/profile.d/conda.sh
+    conda activate "$ENV_NAME"
+fi
+
+# ~/.bashrc sets HF_HUB_ENABLE_HF_TRANSFER=1 but hf_transfer is not installed,
+# which breaks HuggingFace downloads. Force the standard downloader.
+export HF_HUB_ENABLE_HF_TRANSFER=0
 
 cd "$REPO_ROOT"
 

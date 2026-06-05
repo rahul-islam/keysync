@@ -33,10 +33,16 @@ LANDMARKS_DIR="$WORK_DIR/landmarks"
 OUT_DIR="$WORK_DIR/recomposed"
 mkdir -p "$OUT_DIR"
 
-module load mamba/24.3.0
-# shellcheck disable=SC1091
-source /hpc/software/mamba/24.3.0/etc/profile.d/conda.sh
-conda activate "$ENV_NAME"
+if [[ "${CONDA_DEFAULT_ENV:-}" != "$ENV_NAME" ]]; then
+    module load mamba/24.3.0
+    # shellcheck disable=SC1091
+    source /hpc/software/mamba/24.3.0/etc/profile.d/conda.sh
+    conda activate "$ENV_NAME"
+fi
+
+# ~/.bashrc sets HF_HUB_ENABLE_HF_TRANSFER=1 but hf_transfer is not installed,
+# which breaks HuggingFace downloads. Force the standard downloader.
+export HF_HUB_ENABLE_HF_TRANSFER=0
 
 cd "$REPO_ROOT"
 
